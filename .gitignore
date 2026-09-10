@@ -1,0 +1,20 @@
+# Node / build (reforço — financeiro/.gitignore já cobre isso dentro da pasta)
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# SO / OneDrive
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
