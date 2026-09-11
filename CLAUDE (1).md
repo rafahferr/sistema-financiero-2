@@ -14,7 +14,9 @@ npm run dev
 **O que existe além do brief original:**
 - **Módulo Dívidas** (`/dividas`) — não estava no plano original. Funciona como o espelho de Metas Financeiras, mas para abatimento de dívida em vez de acúmulo de meta. Ver seção "6.1 Dívidas" adicionada abaixo.
 - **Conversão automática de pendências em dívida** — toda despesa não paga de um mês encerrado (incluindo fixas e parcelas) vira uma dívida sozinha, ao abrir o app. Ver seção "6.1 Dívidas".
-- **Módulo Parcelas** (`/parcelas`) — agrupa as compras parceladas e permite editá-las como uma unidade só. Ver seção "6.2 Parcelas" abaixo.
+- **Módulo Parcelas** (`/parcelas`) — agrupa as compras parceladas e permite editá-las como uma unidade só (inclusive a quantidade de parcelas). Ver seção "6.2 Parcelas" abaixo.
+- **Dívida parcelada** — dívidas podem ter um plano de parcelas para acompanhar a evolução. Ver seção "6.1 Dívidas".
+- **Receita fixa** — o formulário de receita não mostra mais campos de despesa (forma de pagamento, parcelado, gasto fixo) e ganhou um check "Receita fixa", que repete o lançamento por N meses.
 - **Edição de metas** — os cards em `/metas` ganharam botão de lápis pra corrigir nome, valor total, emoji e cor (o valor guardado continua vindo só dos aportes, pra não conflitar com o histórico).
 - **Ordenação por pago em Lançamentos** — o que já foi pago afunda para o fim da lista da semana e fica com opacidade reduzida; há também um chip "Falta pagar" no topo somando as despesas ainda em aberto.
 - Schema do Dexie está na versão 4 (o brief original só previa a versão 1) — ver `financeiro/src/db/database.ts` para o histórico real de migrações.
@@ -147,7 +149,12 @@ interface Lancamento {
   // Campos adicionados para integração com o módulo Dívidas (não previstos originalmente):
   dividaId?: number;                // dívida vinculada, quando o lançamento é um pagamento dela
   pagamentoDividaId?: number;       // id do PagamentoDivida correspondente a este lançamento
-  origemDivida?: 'direto_no_modulo' | 'via_fluxo'; // como o vínculo com a dívida foi criado
+  // como o vínculo com a dívida foi criado:
+  //   'direto_no_modulo' = lançamento espelho criado ao pagar direto no módulo Dívidas
+  //   'via_fluxo'        = despesa que o usuário vinculou a uma dívida ao criar o lançamento
+  //   'atraso'           = lançamento vencido e não pago, espelhado por uma dívida;
+  //                        continua em Fluxos e, ao ser pago, abate essa dívida
+  origemDivida?: 'direto_no_modulo' | 'via_fluxo' | 'atraso';
 }
 ```
 
@@ -278,14 +285,18 @@ type FormaPagamentoDefault = 'Cartão de Crédito 1' | 'Débito' | 'Pix' | /* ..
 - **Descrição:** input texto livre
 - **Data:** date picker (default = hoje)
 - **Categoria:** select com ícone por categoria
-- **Forma de pagamento:** select — Cartão de Crédito 1/2/3, Débito, Pix, Alelo, Dinheiro, Boleto
+- **Forma de pagamento:** select — Cartão de Crédito 1/2/3, Débito, Pix, Alelo, Dinheiro, Boleto (**só em despesa**)
 - **Valor:** input numérico formatado em R$
 
-**Campos condicionais:**
+**Campos condicionais — só aparecem em DESPESA** (forma de pagamento, parcelamento e gasto fixo são conceitos de despesa; mostrar isso em receita só poluía o formulário):
 - **Parcelado?** toggle sim/não
   - Se sim: campo "Número de parcelas" (ex: 6)
   - Sistema cria automaticamente N lançamentos futuros com `parcelaAtual = 1/6, 2/6...` nos meses seguintes
 - **Gasto fixo?** checkbox — marca o lançamento como recorrente
+- **Vincular a uma dívida?** select opcional com as dívidas em aberto (só na criação)
+
+**Campo condicional — só em RECEITA:**
+- **Receita fixa?** checkbox + "Repetir por quantos meses?" — cria N lançamentos independentes, um por mês, marcados com `gastoFixo: true` e `parcelado: false` (para não aparecerem na tela de Parcelas, já que não são uma compra dividida). Receita é salva com `formaPagamento: ''`, e a lista de Lançamentos esconde o campo quando vazio.
 
 **Comportamento:**
 - Ao salvar com `parcelado = true`, criar todos os registros de parcela automaticamente nos meses seguintes
@@ -399,8 +410,14 @@ Espelha o padrão de Metas Financeiras, mas para o lado oposto: em vez de acumul
 
 > Diferente de Metas Financeiras: aportes em Metas **não** geram lançamento espelho em Fluxos. Para Dívidas isso foi uma decisão explícita (para manter os relatórios financeiros gerais consistentes) — não é o mesmo padrão apesar da semelhança visual dos módulos.
 
-**Conversão automática de pendências em dívida:**
-Ao abrir o app, toda despesa não paga de um mês já encerrado (incluindo gastos fixos e parcelas individuais) é convertida automaticamente em dívida com status `Atrasada`, e o lançamento original é **removido** de Fluxos (a dívida passa a ser o único registro daquele valor). Um banner de aviso mostra quantos itens foram convertidos e quanto, com atalho para `/dividas`. Parcelas da mesma compra parcelada convergem para **uma única** dívida (via `origemLancamentoGrupoId`), em vez de criar um card duplicado por parcela — e uma rotina de limpeza mescla automaticamente duplicatas que porventura já existiam de execuções anteriores a essa correção.
+**Espelhamento automático de atrasos em dívida:**
+Ao abrir o app, toda despesa não paga de um mês já encerrado (incluindo gastos fixos e parcelas individuais) passa a ser espelhada por uma dívida com status `Atrasada`. O lançamento **continua existindo** em Fluxos — ele só ganha `dividaId` + `origemDivida: 'atraso'`, e a dívida é o espelho do atraso, não um substituto. Marcar o lançamento como pago (em Lançamentos ou em Parcelas) registra um pagamento que abate a dívida; desmarcar devolve o saldo. Um banner avisa quantos itens entraram nessa situação. Parcelas da mesma compra parcelada convergem para **uma única** dívida (via `origemLancamentoGrupoId`), em vez de um card por parcela.
+
+> ⚠️ **Mudou em 2026-09-11.** Até então o lançamento era **apagado** de Fluxos ao virar dívida. O usuário usou na prática e pediu pra reverter: as parcelas atrasadas sumiam da tela de Parcelas, o que atrapalhava o acompanhamento. Existe uma migração única (`restaurarParcelasQueViraramDivida`) que recria as parcelas apagadas pela regra antiga, religando-as à dívida — conservadora de propósito: só mexe em séries que ainda têm parcela viva e em dívidas **sem nenhum pagamento**, para não contar o mesmo dinheiro duas vezes.
+
+**Consistência do total:** o `valorTotal` de uma dívida-espelho é sempre recalculado como a soma dos lançamentos `'atraso'` ligados a ela, então editar ou excluir um desses lançamentos se reflete sozinho no saldo (e rodar o espelhamento duas vezes não duplica nada).
+
+**Dívida parcelada:** informar `numeroParcelas` faz a dívida ganhar um plano de parcelas com vencimentos mensais (a 1ª na data de vencimento), badge `X/N parcelas` e um botão "Pagar 1 parcela". **Não existe tabela de parcelas de dívida** — quais estão pagas é derivado do `valorPago`, então qualquer pagamento, mesmo de valor quebrado, avança o plano. Por decisão do usuário, essas parcelas **não** viram lançamentos em Fluxos, para não poluir o fluxo de caixa dos meses futuros.
 
 ---
 
@@ -412,9 +429,9 @@ Rota `/parcelas`, item próprio na sidebar (ícone `Layers`). Trata uma compra p
 - Descrição, categoria e forma de pagamento
 - Badge `X/N parcelas pagas` e barra de progresso (valor pago / valor total)
 - Quanto já foi pago e quanto ainda falta
-- Expandir mostra cada parcela individual (número, data, valor) e permite marcar como paga ali mesmo
+- Expandir mostra cada parcela individual (número, data, valor), permite marcar como paga ali mesmo, e marca com badge `Atrasada` as que estão sendo cobradas como dívida
 - Filtro no topo: Todas / Em andamento / Concluídas
-- Aviso quando faltam parcelas no grupo (viraram dívida pela conversão automática), com link para `/dividas`
+- **Aviso quando faltam parcelas no grupo**, que distingue dois casos: se existe dívida para aquele grupo, aponta para `/dividas`; se não existe (a dívida foi excluída), diz que as parcelas foram removidas do histórico e oferece um botão **"Restaurar parcelas"**. Ao restaurar, pergunta se elas **já foram pagas** ou **ainda estão em aberto** — só o usuário sabe se chegou a quitar a dívida antes de ela sumir. Restaurar em aberto faz o espelhamento automático voltar a cobrá-las como dívida.
 
 **Edição da compra inteira** (botão de lápis) — resolve o problema de ter que editar parcela por parcela:
 - **Data da 1ª parcela** — as demais são recalculadas automaticamente, uma por mês. O offset usa `parcelaAtual`, não a posição no array, pra não desalinhar caso alguma parcela do meio já tenha virado dívida.
