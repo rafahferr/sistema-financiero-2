@@ -5,6 +5,7 @@ import Lancamentos from './pages/Lancamentos';
 import ResumoAnual from './pages/ResumoAnual';
 import Metas from './pages/Metas';
 import Dividas from './pages/Dividas';
+import Parcelas from './pages/Parcelas';
 import Investimentos from './pages/Investimentos';
 import Configuracoes from './pages/Configuracoes';
 import { useSetupInicial } from './hooks/useSetupInicial';
@@ -32,6 +33,7 @@ function AppContent() {
           <Route path="/resumo-anual" element={<ResumoAnual />} />
           <Route path="/metas" element={<Metas />} />
           <Route path="/dividas" element={<Dividas />} />
+          <Route path="/parcelas" element={<Parcelas />} />
           <Route path="/investimentos" element={<Investimentos />} />
           <Route path="/configuracoes" element={<Configuracoes />} />
         </Routes>

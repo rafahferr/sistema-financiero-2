@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, List, BarChart2, Target,
-  TrendingUp, Settings, Flame, CreditCard,
+  TrendingUp, Settings, Flame, CreditCard, Layers,
 } from 'lucide-react';
 import { useGamificacao } from '../../hooks/useGamificacao';
 import { NIVEIS } from '../../types';
@@ -12,6 +12,7 @@ const nav = [
   { to: '/resumo-anual',  icon: BarChart2,       label: 'Resumo Anual' },
   { to: '/metas',         icon: Target,          label: 'Metas' },
   { to: '/dividas',       icon: CreditCard,      label: 'Dívidas' },
+  { to: '/parcelas',      icon: Layers,          label: 'Parcelas' },
   { to: '/investimentos', icon: TrendingUp,      label: 'Investimentos' },
   { to: '/configuracoes', icon: Settings,        label: 'Configurações' },
 ];

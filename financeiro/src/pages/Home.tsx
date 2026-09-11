@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Link } from 'react-router-dom';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
   Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, PiggyBank } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, Layers } from 'lucide-react';
 import Header from '../components/Layout/Header';
 import { db } from '../db/database';
 import { formatarMoeda, mesAtual, anoAtual } from '../utils/formatters';
 import { NotificacaoGastosFixos } from '../components/NotificacaoGastosFixos';
+import { useParcelas } from '../hooks/useParcelas';
 
 const CORES_GRAFICOS = [
   '#6366f1','#f97316','#84cc16','#64748b','#0ea5e9',
@@ -44,6 +46,8 @@ export default function Home() {
   ) ?? [];
 
   const categorias = useLiveQuery(() => db.categorias.toArray()) ?? [];
+
+  const { grupos: gruposParcelas } = useParcelas();
 
   function navMes(dir: number) {
     const d = new Date(ano, mes - 1 + dir, 1);
@@ -101,6 +105,17 @@ export default function Home() {
       .filter(l => l.formaPagamento === fp.nome && l.tipo === 'despesa')
       .reduce((s, l) => s + l.valor, 0),
   })).filter(f => f.valor > 0).sort((a, b) => b.valor - a.valor);
+
+  // Compras parceladas em andamento (visão geral, não filtrada por mês)
+  const parceladasEmAndamento = gruposParcelas.filter(
+    g => g.parcelas.filter(p => p.pago).length < g.totalParcelas
+  );
+  const totalParcelasPago = parceladasEmAndamento.reduce(
+    (s, g) => s + g.parcelas.filter(p => p.pago).reduce((s2, p) => s2 + p.valor, 0), 0
+  );
+  const totalParcelasRestante = parceladasEmAndamento.reduce(
+    (s, g) => s + g.parcelas.filter(p => !p.pago).reduce((s2, p) => s2 + p.valor, 0), 0
+  );
 
   const cards = [
     { label: 'Total de Entradas', valor: receitas,  cor: 'text-green-400',  bg: 'bg-green-400/10',  icon: TrendingUp },
@@ -221,6 +236,50 @@ export default function Home() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Compras parceladas */}
+        {parceladasEmAndamento.length > 0 && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold flex items-center gap-2">
+                <Layers size={16} className="text-indigo-400" />
+                Compras Parceladas
+              </h3>
+              <Link to="/parcelas" className="text-indigo-400 hover:text-indigo-300 text-xs font-medium">
+                Ver todas →
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div>
+                <p className="text-gray-400 text-xs mb-1">Compras em andamento</p>
+                <p className="text-white text-lg font-bold">{parceladasEmAndamento.length}</p>
+              </div>
+              <div>
+                <p className="text-gray-400 text-xs mb-1">Já pago</p>
+                <p className="text-green-400 text-lg font-bold">{formatarMoeda(totalParcelasPago)}</p>
+              </div>
+              <div>
+                <p className="text-gray-400 text-xs mb-1">Ainda falta pagar</p>
+                <p className="text-red-400 text-lg font-bold">{formatarMoeda(totalParcelasRestante)}</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {parceladasEmAndamento.slice(0, 4).map(g => {
+                const pagas = g.parcelas.filter(p => p.pago).length;
+                const pct = (pagas / g.totalParcelas) * 100;
+                return (
+                  <div key={g.grupoId} className="flex items-center gap-3">
+                    <span className="text-gray-300 text-sm w-40 truncate">{g.descricao}</span>
+                    <div className="flex-1 bg-gray-800 rounded-full h-2">
+                      <div className="bg-indigo-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-gray-400 text-xs w-16 text-right shrink-0">{pagas}/{g.totalParcelas}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
