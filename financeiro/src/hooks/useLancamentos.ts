@@ -3,7 +3,10 @@ import { db } from '../db/database';
 import type { Lancamento } from '../types';
 import { addMonths, format } from 'date-fns';
 import { useGamificacao } from './useGamificacao';
-import { criarPagamentoViaFluxo, atualizarPagamentoDeFluxo, removerPagamentoDivida } from './useDividas';
+import {
+  criarPagamentoViaFluxo, atualizarPagamentoDeFluxo, removerPagamentoDivida,
+  marcarLancamentoPago, recalcularDivida,
+} from './useDividas';
 
 export function useLancamentos(mes?: number, ano?: number) {
   const { registrarAcao } = useGamificacao();
@@ -59,6 +62,27 @@ export function useLancamentos(mes?: number, ano?: number) {
     await registrarAcao('lancamento');
   }
 
+  /**
+   * Cria o lançamento repetido por N meses (1 por mês, mesmo dia). Usado pela receita fixa:
+   * ao contrário do parcelado, cada mês é um lançamento independente — não é uma compra
+   * dividida, e por isso não aparece na tela de Parcelas.
+   */
+  async function adicionarLancamentoRecorrente(dados: Omit<Lancamento, 'id'>, meses: number) {
+    for (let i = 0; i < meses; i++) {
+      const dataMes = i === 0
+        ? new Date(dados.data + 'T00:00:00')
+        : addMonths(new Date(dados.data + 'T00:00:00'), i);
+      await db.lancamentos.add({
+        ...dados,
+        parcelado: false,
+        data: format(dataMes, 'yyyy-MM-dd'),
+        mes: dataMes.getMonth() + 1,
+        ano: dataMes.getFullYear(),
+      } as Lancamento);
+    }
+    await registrarAcao('lancamento');
+  }
+
   async function editarLancamento(id: number, dados: Partial<Lancamento>) {
     await db.lancamentos.update(id, dados);
     const atual = await db.lancamentos.get(id);
@@ -76,16 +100,22 @@ export function useLancamentos(mes?: number, ano?: number) {
       await removerPagamentoDivida(lancamento.pagamentoDividaId, true);
     }
     await db.lancamentos.delete(id);
+
+    // Lançamento atrasado espelhado por dívida: o total dela é a soma desses lançamentos
+    if (lancamento?.origemDivida === 'atraso' && lancamento.dividaId) {
+      await recalcularDivida(lancamento.dividaId);
+    }
   }
 
   async function togglePago(id: number, pago: boolean) {
-    await db.lancamentos.update(id, { pago });
+    await marcarLancamentoPago(id, pago);
   }
 
   return {
     lancamentos,
     todosLancamentos,
     adicionarLancamento,
+    adicionarLancamentoRecorrente,
     editarLancamento,
     excluirLancamento,
     togglePago,

@@ -5,7 +5,7 @@ import Header from '../components/Layout/Header';
 import FormLancamento from '../components/Lancamento/FormLancamento';
 import { Toast, useToast } from '../components/Toast';
 import { useLancamentos } from '../hooks/useLancamentos';
-import { removerPagamentoDivida } from '../hooks/useDividas';
+import { removerPagamentoDivida, recalcularDivida } from '../hooks/useDividas';
 import { db } from '../db/database';
 import { formatarMoeda, formatarData, mesAtual, anoAtual } from '../utils/formatters';
 import type { Lancamento } from '../types';
@@ -73,6 +73,9 @@ export default function Lancamentos() {
       await removerPagamentoDivida(lancamento.pagamentoDividaId, true);
     }
     await db.lancamentos.delete(id);
+    if (lancamento?.origemDivida === 'atraso' && lancamento.dividaId) {
+      await recalcularDivida(lancamento.dividaId);
+    }
     mostrarToast('Lançamento excluído.');
   }
 
@@ -205,15 +208,21 @@ export default function Lancamentos() {
                             <span className="text-xs bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded">Fixo</span>
                           )}
                           {l.dividaId && (
-                            <span className="text-xs bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded">Dívida</span>
+                            <span className="text-xs bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded">
+                              {l.origemDivida === 'atraso' ? 'Atrasada' : 'Dívida'}
+                            </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-gray-500 text-xs">{formatarData(l.data)}</span>
                           <span className="text-gray-600 text-xs">·</span>
                           <span className="text-gray-500 text-xs">{l.categoria}</span>
-                          <span className="text-gray-600 text-xs">·</span>
-                          <span className="text-gray-500 text-xs">{l.formaPagamento}</span>
+                          {l.formaPagamento && (
+                            <>
+                              <span className="text-gray-600 text-xs">·</span>
+                              <span className="text-gray-500 text-xs">{l.formaPagamento}</span>
+                            </>
+                          )}
                         </div>
                       </div>
 

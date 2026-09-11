@@ -1,11 +1,43 @@
 import { useState } from 'react';
-import { Plus, ChevronDown, ChevronUp, Trash2, Pencil, HandCoins, Link2, Store } from 'lucide-react';
+import { addMonths, format } from 'date-fns';
+import { Plus, ChevronDown, ChevronUp, Trash2, Pencil, HandCoins, Link2, Store, Check } from 'lucide-react';
 import Header from '../components/Layout/Header';
 import { useDividas } from '../hooks/useDividas';
 import { useConfiguracoes } from '../hooks/useConfiguracoes';
 import { formatarMoeda, formatarData, dataHoje } from '../utils/formatters';
 import { Toast, useToast } from '../components/Toast';
 import type { Divida, PagamentoDivida } from '../types';
+
+interface ParcelaPlano {
+  numero: number;
+  valor: number;
+  vencimento: string;
+  pago: boolean;
+}
+
+/**
+ * Monta o plano de parcelas de uma dívida a partir de `numeroParcelas`/`valorParcela`.
+ * Quais estão pagas é derivado de `valorPago` (não há tabela de parcelas de dívida):
+ * o valor já pago vai "preenchendo" as parcelas em ordem.
+ */
+function montarPlanoDeParcelas(divida: Divida): ParcelaPlano[] {
+  const total = divida.numeroParcelas ?? 0;
+  if (total < 2) return [];
+
+  const valor = divida.valorParcela || divida.valorTotal / total;
+  const base = new Date((divida.dataVencimento ?? divida.dataContracao) + 'T00:00:00');
+
+  return Array.from({ length: total }, (_, i) => {
+    const vencimento = i === 0 ? base : addMonths(base, i);
+    return {
+      numero: i + 1,
+      valor,
+      vencimento: format(vencimento, 'yyyy-MM-dd'),
+      // parcela i está paga quando o total pago cobre tudo até ela
+      pago: divida.valorPago >= valor * (i + 1) - 0.001,
+    };
+  });
+}
 
 const STATUS_INFO: Record<Divida['status'], { label: string; cor: string; bg: string }> = {
   em_aberto: { label: 'Em aberto', cor: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/20' },
@@ -31,6 +63,10 @@ function CardDivida({ divida, pagamentos, onPagamento, onEditar, onExcluir, onEx
   const restante = Math.max(0, divida.valorTotal - divida.valorPago);
   const pagoAMais = divida.valorPago > divida.valorTotal;
   const statusInfo = STATUS_INFO[divida.status];
+
+  // Plano de parcelas: derivado do quanto já foi pago, então qualquer pagamento (inclusive
+  // de valor quebrado) avança o plano, sem precisar de uma tabela separada de parcelas.
+  const plano = montarPlanoDeParcelas(divida);
 
   function handlePagamento(e: React.FormEvent) {
     e.preventDefault();
@@ -63,9 +99,16 @@ function CardDivida({ divida, pagamentos, onPagamento, onEditar, onExcluir, onEx
           </div>
         </div>
 
-        <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full border mb-3 ${statusInfo.bg} ${statusInfo.cor}`}>
-          {statusInfo.label}
-        </span>
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full border ${statusInfo.bg} ${statusInfo.cor}`}>
+            {statusInfo.label}
+          </span>
+          {plano.length > 0 && (
+            <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full border bg-indigo-500/10 border-indigo-500/20 text-indigo-400">
+              {plano.filter(p => p.pago).length}/{plano.length} parcelas
+            </span>
+          )}
+        </div>
 
         <div className="mb-3">
           <div className="flex justify-between text-sm mb-1.5">
@@ -94,13 +137,23 @@ function CardDivida({ divida, pagamentos, onPagamento, onEditar, onExcluir, onEx
           </div>
         )}
 
+        {plano.length > 0 && restante > 0 && (
+          <button
+            onClick={() => onPagamento(divida.id!, Math.min(plano[0].valor, restante), dataHoje(), 'Pagamento de 1 parcela')}
+            className="w-full mb-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium py-2 rounded-lg transition-colors"
+          >
+            <Check size={13} className="inline mr-1" />
+            Pagar 1 parcela ({formatarMoeda(Math.min(plano[0].valor, restante))})
+          </button>
+        )}
+
         <div className="flex gap-2">
           <button
             onClick={() => setPagando(v => !v)}
             className="flex-1 bg-red-600 hover:bg-red-500 text-white text-xs font-medium py-2 rounded-lg transition-colors"
           >
             <HandCoins size={13} className="inline mr-1" />
-            Adicionar Pagamento
+            {plano.length > 0 ? 'Outro valor' : 'Adicionar Pagamento'}
           </button>
           <button
             onClick={() => setExpandido(v => !v)}
@@ -139,8 +192,28 @@ function CardDivida({ divida, pagamentos, onPagamento, onEditar, onExcluir, onEx
           </form>
         )}
 
-        {expandido && (
+        {expandido && plano.length > 0 && (
           <div className="mt-3 border-t border-gray-800 pt-3">
+            <p className="text-gray-500 text-xs font-medium mb-2">Plano de parcelas</p>
+            <div className="space-y-1.5 mb-3">
+              {plano.map(p => (
+                <div key={p.numero} className="flex items-center gap-2 text-xs">
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                    p.pago ? 'bg-green-500' : 'border-2 border-gray-600'
+                  }`}>
+                    {p.pago && <Check size={9} className="text-white" strokeWidth={3} />}
+                  </span>
+                  <span className="text-gray-400 w-10 shrink-0">{p.numero}/{plano.length}</span>
+                  <span className="text-gray-500 flex-1">{formatarData(p.vencimento)}</span>
+                  <span className={p.pago ? 'text-gray-500' : 'text-white font-medium'}>{formatarMoeda(p.valor)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {expandido && (
+          <div className={`mt-3 pt-3 ${plano.length > 0 ? '' : 'border-t border-gray-800'}`}>
             <p className="text-gray-500 text-xs font-medium mb-2">Histórico de pagamentos</p>
             {pagamentos.length === 0
               ? <p className="text-gray-600 text-xs">Nenhum pagamento registrado.</p>
@@ -251,9 +324,17 @@ function ModalDivida({ dividaEditar, onClose, onSalvar }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-gray-400 text-xs mb-1">Nº de parcelas (informativo)</label>
+              <label className="block text-gray-400 text-xs mb-1">Nº de parcelas</label>
               <input
-                type="number" min="0" value={numeroParcelas} onChange={e => setNumeroParcelas(e.target.value)}
+                type="number" min="0" max="120" value={numeroParcelas}
+                onChange={e => {
+                  const n = e.target.value;
+                  setNumeroParcelas(n);
+                  // sugere o valor da parcela dividindo o total, mas deixa o usuário sobrescrever
+                  const qtd = parseInt(n);
+                  const total = parseFloat(valorTotal);
+                  if (qtd > 1 && total > 0) setValorParcela((total / qtd).toFixed(2));
+                }}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500"
               />
             </div>
@@ -265,6 +346,12 @@ function ModalDivida({ dividaEditar, onClose, onSalvar }: {
               />
             </div>
           </div>
+          {parseInt(numeroParcelas) > 1 && (
+            <p className="text-indigo-400 text-xs -mt-1">
+              A dívida vai aparecer com um plano de {numeroParcelas} parcelas, e cada pagamento registrado
+              avança esse plano. A 1ª parcela vence na data de vencimento acima.
+            </p>
+          )}
           <div>
             <label className="block text-gray-400 text-xs mb-1">Categoria (opcional)</label>
             <select

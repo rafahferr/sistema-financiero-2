@@ -13,7 +13,7 @@ interface Props {
 }
 
 export default function FormLancamento({ onClose, onSucesso, lancamentoEditar }: Props) {
-  const { adicionarLancamento, editarLancamento } = useLancamentos();
+  const { adicionarLancamento, adicionarLancamentoRecorrente, editarLancamento } = useLancamentos();
   const { categoriasDespesa, categoriasReceita, formasPagamento } = useConfiguracoes();
   const { dividas } = useDividas();
 
@@ -29,6 +29,8 @@ export default function FormLancamento({ onClose, onSucesso, lancamentoEditar }:
   const [parcelado, setParcelado] = useState(lancamentoEditar?.parcelado ?? false);
   const [numeroParcelas, setNumeroParcelas] = useState(lancamentoEditar?.numeroParcelas ?? 2);
   const [gastoFixo, setGastoFixo] = useState(lancamentoEditar?.gastoFixo ?? false);
+  const [receitaFixa, setReceitaFixa] = useState(false);
+  const [mesesReceitaFixa, setMesesReceitaFixa] = useState(12);
   const [dividaId, setDividaId] = useState<string>(lancamentoEditar?.dividaId?.toString() ?? '');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
@@ -40,7 +42,8 @@ export default function FormLancamento({ onClose, onSucesso, lancamentoEditar }:
     ? dividas.find(d => d.id === lancamentoEditar.dividaId)
     : undefined;
 
-  const categorias = tipo === 'receita' ? categoriasReceita : categoriasDespesa;
+  const ehReceita = tipo === 'receita';
+  const categorias = ehReceita ? categoriasReceita : categoriasDespesa;
   // Quando parcelado, o usuário digita o valor da parcela; o total é calculado
   const valorNum = parseFloat(valor.replace(',', '.')) || 0;
   const valorTotal = parcelado && numeroParcelas > 1 ? valorNum * numeroParcelas : valorNum;
@@ -49,7 +52,7 @@ export default function FormLancamento({ onClose, onSucesso, lancamentoEditar }:
     e.preventDefault();
     if (!descricao.trim()) { setErro('Informe a descrição.'); return; }
     if (!categoria) { setErro('Selecione uma categoria.'); return; }
-    if (!formaPagamento) { setErro('Selecione a forma de pagamento.'); return; }
+    if (!ehReceita && !formaPagamento) { setErro('Selecione a forma de pagamento.'); return; }
     if (valorNum <= 0) { setErro('Informe um valor válido.'); return; }
 
     setSalvando(true);
@@ -63,10 +66,11 @@ export default function FormLancamento({ onClose, onSucesso, lancamentoEditar }:
         data,
         categoria,
         valor: valorNum,
-        formaPagamento,
-        parcelado,
-        numeroParcelas: parcelado ? numeroParcelas : undefined,
-        gastoFixo,
+        // Receita não usa forma de pagamento nem parcelamento — são conceitos de despesa
+        formaPagamento: ehReceita ? '' : formaPagamento,
+        parcelado: ehReceita ? false : parcelado,
+        numeroParcelas: !ehReceita && parcelado ? numeroParcelas : undefined,
+        gastoFixo: ehReceita ? receitaFixa : gastoFixo,
         pago: false,
         mes: dataObj.getMonth() + 1,
         ano: dataObj.getFullYear(),
@@ -75,6 +79,8 @@ export default function FormLancamento({ onClose, onSucesso, lancamentoEditar }:
       if (editando && lancamentoEditar?.id) {
         // Vínculo com dívida não é editável por aqui — evita sobrescrever com undefined.
         await editarLancamento(lancamentoEditar.id, dados);
+      } else if (ehReceita && receitaFixa && mesesReceitaFixa > 1) {
+        await adicionarLancamentoRecorrente(dados, mesesReceitaFixa);
       } else {
         await adicionarLancamento({
           ...dados,
@@ -182,20 +188,22 @@ export default function FormLancamento({ onClose, onSucesso, lancamentoEditar }:
             </select>
           </div>
 
-          {/* Forma de pagamento */}
-          <div>
-            <label className="block text-gray-400 text-xs mb-1">Forma de Pagamento</label>
-            <select
-              value={formaPagamento}
-              onChange={e => setFormaPagamento(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-            >
-              <option value="">Selecionar forma de pagamento...</option>
-              {formasPagamento.map(f => (
-                <option key={f.id} value={f.nome}>{f.emoji} {f.nome}</option>
-              ))}
-            </select>
-          </div>
+          {/* Forma de pagamento — só faz sentido em despesa */}
+          {!ehReceita && (
+            <div>
+              <label className="block text-gray-400 text-xs mb-1">Forma de Pagamento</label>
+              <select
+                value={formaPagamento}
+                onChange={e => setFormaPagamento(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">Selecionar forma de pagamento...</option>
+                {formasPagamento.map(f => (
+                  <option key={f.id} value={f.nome}>{f.emoji} {f.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Vínculo com dívida */}
           {mostrarVinculoDivida && dividasEmAberto.length > 0 && (
@@ -220,30 +228,62 @@ export default function FormLancamento({ onClose, onSucesso, lancamentoEditar }:
             </p>
           )}
 
-          {/* Checkboxes */}
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={parcelado}
-                onChange={e => setParcelado(e.target.checked)}
-                className="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500"
-              />
-              <span className="text-gray-300 text-sm">Parcelado</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={gastoFixo}
-                onChange={e => setGastoFixo(e.target.checked)}
-                className="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500"
-              />
-              <span className="text-gray-300 text-sm">Gasto Fixo</span>
-            </label>
-          </div>
+          {/* Checkboxes — parcelado e gasto fixo são conceitos de despesa */}
+          {!ehReceita && (
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={parcelado}
+                  onChange={e => setParcelado(e.target.checked)}
+                  className="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500"
+                />
+                <span className="text-gray-300 text-sm">Parcelado</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={gastoFixo}
+                  onChange={e => setGastoFixo(e.target.checked)}
+                  className="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500"
+                />
+                <span className="text-gray-300 text-sm">Gasto Fixo</span>
+              </label>
+            </div>
+          )}
+
+          {/* Receita fixa — repete o mesmo valor todo mês */}
+          {ehReceita && !editando && (
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={receitaFixa}
+                  onChange={e => setReceitaFixa(e.target.checked)}
+                  className="rounded border-gray-600 bg-gray-700 text-green-500 focus:ring-green-500"
+                />
+                <span className="text-gray-300 text-sm">Receita fixa (se repete todo mês)</span>
+              </label>
+              {receitaFixa && (
+                <div className="mt-2">
+                  <label className="block text-gray-400 text-xs mb-1">Repetir por quantos meses?</label>
+                  <input
+                    type="number" min="2" max="60" value={mesesReceitaFixa}
+                    onChange={e => setMesesReceitaFixa(parseInt(e.target.value) || 12)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-green-500"
+                  />
+                  {valorNum > 0 && (
+                    <p className="text-green-400 text-xs mt-1 font-medium">
+                      {mesesReceitaFixa}x de {formatarMoeda(valorNum)}, um por mês a partir da data escolhida
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Parcelas */}
-          {parcelado && (
+          {parcelado && !ehReceita && (
             <div>
               <label className="block text-gray-400 text-xs mb-1">Número de Parcelas</label>
               <input

@@ -7,9 +7,10 @@ interface Props {
   convertidos: number;
   total: number;
   mesclados?: number;
+  restauradas?: number;
 }
 
-export function NotificacaoDividasConvertidas({ convertidos, total, mesclados = 0 }: Props) {
+export function NotificacaoDividasConvertidas({ convertidos, total, mesclados = 0, restauradas = 0 }: Props) {
   const [visivel, setVisivel] = useState(true);
   const navigate = useNavigate();
 
@@ -27,9 +28,16 @@ export function NotificacaoDividasConvertidas({ convertidos, total, mesclados = 
             {convertidos > 0 && (
               <p className="text-gray-300 text-sm mt-1">
                 {convertidos === 1
-                  ? '1 lançamento não pago de um mês anterior foi convertido automaticamente em dívida'
-                  : `${convertidos} lançamentos não pagos de meses anteriores foram convertidos automaticamente em dívida`}
-                {' '}({formatarMoeda(total)}). O registro original foi removido de Fluxos.
+                  ? '1 lançamento não pago de um mês anterior passou a ser cobrado como dívida'
+                  : `${convertidos} lançamentos não pagos de meses anteriores passaram a ser cobrados como dívida`}
+                {' '}({formatarMoeda(total)}). Eles continuam em Lançamentos — marcar como pago abate a dívida.
+              </p>
+            )}
+            {restauradas > 0 && (
+              <p className="text-gray-300 text-sm mt-1">
+                {restauradas === 1
+                  ? '1 parcela que tinha sido removida voltou para Lançamentos, ligada à dívida dela.'
+                  : `${restauradas} parcelas que tinham sido removidas voltaram para Lançamentos, ligadas às dívidas delas.`}
               </p>
             )}
             {mesclados > 0 && (

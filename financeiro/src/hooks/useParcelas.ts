@@ -41,7 +41,7 @@ function agruparParcelas(lancamentos: Lancamento[]): GrupoParcela[] {
 }
 
 /** Data/mês/ano de uma parcela, a partir da data da 1ª e do número da parcela. */
-function datasDaParcela(dataBase: string, numero: number) {
+export function datasDaParcela(dataBase: string, numero: number) {
   const base = new Date(dataBase + 'T00:00:00');
   const data = numero === 1 ? base : addMonths(base, numero - 1);
   return { data: format(data, 'yyyy-MM-dd'), mes: data.getMonth() + 1, ano: data.getFullYear() };
@@ -51,7 +51,7 @@ function datasDaParcela(dataBase: string, numero: number) {
  * Data da 1ª parcela do grupo. Se a parcela 1 não existir mais (virou dívida), retrocede
  * a partir de qualquer parcela existente usando o número dela.
  */
-function dataDaPrimeiraParcela(parcelas: Lancamento[]): string {
+export function dataDaPrimeiraParcela(parcelas: Lancamento[]): string {
   const primeira = parcelas.find(p => (p.parcelaAtual ?? 1) === 1);
   if (primeira) return primeira.data;
   const ref = parcelas[0];
@@ -140,9 +140,5 @@ export function useParcelas() {
 
   const grupos = agruparParcelas(lancamentosParcelados);
 
-  async function togglePago(id: number, pago: boolean) {
-    await db.lancamentos.update(id, { pago: !pago });
-  }
-
-  return { grupos, togglePago };
+  return { grupos };
 }

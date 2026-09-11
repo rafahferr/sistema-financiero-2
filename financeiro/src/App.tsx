@@ -25,6 +25,7 @@ function AppContent() {
             convertidos={conversaoDividas.convertidos}
             total={conversaoDividas.total}
             mesclados={conversaoDividas.mesclados}
+            restauradas={conversaoDividas.restauradas}
           />
         )}
         <Routes>

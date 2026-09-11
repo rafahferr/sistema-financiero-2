@@ -17,7 +17,9 @@ export interface Lancamento {
   ano: number;
   dividaId?: number;
   pagamentoDividaId?: number;
-  origemDivida?: 'direto_no_modulo' | 'via_fluxo';
+  // 'atraso' = lançamento vencido e não pago que passou a ser espelhado por uma dívida,
+  // mas continua existindo em Fluxos; pagá-lo abate o saldo dessa dívida.
+  origemDivida?: 'direto_no_modulo' | 'via_fluxo' | 'atraso';
 }
 
 export interface Meta {

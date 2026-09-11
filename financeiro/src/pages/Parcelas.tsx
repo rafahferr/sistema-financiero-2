@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Pencil, Check, AlertTriangle, X } from 'lucide-react';
 import Header from '../components/Layout/Header';
 import { useParcelas, editarGrupoParcela, type GrupoParcela } from '../hooks/useParcelas';
+import { marcarLancamentoPago } from '../hooks/useDividas';
 import { useConfiguracoes } from '../hooks/useConfiguracoes';
 import { formatarMoeda, formatarData } from '../utils/formatters';
 import { Toast, useToast } from '../components/Toast';
@@ -88,7 +89,11 @@ function CardParcela({ grupo, onEditar, onTogglePago }: {
                   {p.pago && <Check size={11} className="text-white" strokeWidth={3} />}
                 </button>
                 <span className="text-gray-400 w-10 shrink-0">{p.parcelaAtual}/{p.totalParcelas}</span>
-                <span className="text-gray-500 flex-1">{formatarData(p.data)}</span>
+                <span className="text-gray-500">{formatarData(p.data)}</span>
+                {p.origemDivida === 'atraso' && !p.pago && (
+                  <span className="text-[10px] bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded shrink-0">Atrasada</span>
+                )}
+                <span className="flex-1" />
                 <span className={p.pago ? 'text-gray-500' : 'text-white font-medium'}>{formatarMoeda(p.valor)}</span>
               </div>
             ))}
@@ -228,7 +233,7 @@ function ModalEditarParcela({ grupo, onClose, onSalvar }: {
 }
 
 export default function Parcelas() {
-  const { grupos, togglePago } = useParcelas();
+  const { grupos } = useParcelas();
   const [filtro, setFiltro] = useState<'todas' | 'em_andamento' | 'concluidas'>('todas');
   const [editando, setEditando] = useState<GrupoParcela | undefined>();
   const { toastMsg, toastTipo, mostrarToast, fecharToast } = useToast();
@@ -274,7 +279,7 @@ export default function Parcelas() {
                 key={grupo.grupoId}
                 grupo={grupo}
                 onEditar={setEditando}
-                onTogglePago={togglePago}
+                onTogglePago={(id, pago) => marcarLancamentoPago(id, !pago)}
               />
             ))}
           </div>
