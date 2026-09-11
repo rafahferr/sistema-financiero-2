@@ -33,7 +33,8 @@ export function useLancamentos(mes?: number, ano?: number) {
       } as Lancamento);
 
       for (let i = 2; i <= dados.numeroParcelas; i++) {
-        const dataBase = new Date(dados.data);
+        // 'T00:00:00' força horário local — sem isso a data é lida como UTC e cai um dia antes
+        const dataBase = new Date(dados.data + 'T00:00:00');
         const dataFutura = addMonths(dataBase, i - 1);
         const mesF = dataFutura.getMonth() + 1;
         const anoF = dataFutura.getFullYear();

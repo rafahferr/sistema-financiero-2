@@ -112,16 +112,31 @@ function ModalEditarParcela({ grupo, onClose, onSalvar }: {
   const [formaPagamento, setFormaPagamento] = useState(grupo.formaPagamento);
   const [valorParcela, setValorParcela] = useState(grupo.valorParcela.toString());
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(grupo.parcelas[0]?.data ?? '');
+  const [totalParcelas, setTotalParcelas] = useState(grupo.totalParcelas.toString());
+
+  const totalNum = parseInt(totalParcelas) || 0;
+  const valorNum = parseFloat(valorParcela.replace(',', '.')) || 0;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!descricao.trim() || !parseFloat(valorParcela) || !dataPrimeiraParcela) return;
+    if (!descricao.trim() || !valorNum || !dataPrimeiraParcela || totalNum < 1) return;
+
+    if (totalNum < grupo.totalParcelas) {
+      const removidas = grupo.parcelas.filter(p => (p.parcelaAtual ?? 1) > totalNum);
+      const pagas = removidas.filter(p => p.pago).length;
+      const aviso = pagas > 0
+        ? `Reduzir para ${totalNum}x vai excluir ${removidas.length} parcela(s), sendo ${pagas} já marcada(s) como paga(s). Continuar?`
+        : `Reduzir para ${totalNum}x vai excluir ${removidas.length} parcela(s) ainda não paga(s). Continuar?`;
+      if (!confirm(aviso)) return;
+    }
+
     onSalvar({
       descricao: descricao.trim(),
       categoria,
       formaPagamento,
-      valorParcela: parseFloat(valorParcela),
+      valorParcela: valorNum,
       dataPrimeiraParcela,
+      totalParcelas: totalNum,
     });
   }
 
@@ -152,13 +167,30 @@ function ModalEditarParcela({ grupo, onClose, onSalvar }: {
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
             />
           </div>
-          <div>
-            <label className="block text-gray-400 text-xs mb-1">Valor de cada parcela (R$)</label>
-            <input
-              type="number" step="0.01" min="0" value={valorParcela} onChange={e => setValorParcela(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-gray-400 text-xs mb-1">Valor de cada parcela (R$)</label>
+              <input
+                type="number" step="0.01" min="0" value={valorParcela} onChange={e => setValorParcela(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-400 text-xs mb-1">Nº de parcelas</label>
+              <input
+                type="number" min="1" max="48" value={totalParcelas} onChange={e => setTotalParcelas(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+              />
+            </div>
           </div>
+
+          {totalNum > 0 && valorNum > 0 && (
+            <p className="text-indigo-400 text-xs font-medium -mt-1">
+              {totalNum}x de {formatarMoeda(valorNum)} = {formatarMoeda(totalNum * valorNum)} total
+              {totalNum > grupo.totalParcelas && ` · ${totalNum - grupo.totalParcelas} parcela(s) serão criadas`}
+              {totalNum < grupo.totalParcelas && ` · ${grupo.totalParcelas - totalNum} parcela(s) serão excluídas`}
+            </p>
+          )}
           <div>
             <label className="block text-gray-400 text-xs mb-1">Categoria</label>
             <select
