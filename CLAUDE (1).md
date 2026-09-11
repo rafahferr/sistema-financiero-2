@@ -19,6 +19,17 @@ npm run dev
 
 **Para o histórico técnico completo e atualizado** (schema exato, bugs corrigidos, decisões tomadas, testes feitos), consulte a memória do Claude Code para este projeto — arquivo `project_sistema_financeiro.md` no sistema de memória — que é carregado automaticamente em toda nova conversa e é a fonte mais confiável e atualizada. Este arquivo `CLAUDE (1).md` é atualizado sob pedido, não automaticamente.
 
+### Repositório GitHub e deploy (2026-09-10)
+
+- **Repositório:** https://github.com/rafahferr/sistema-financiero-2 — **público** (necessário pra usar GitHub Pages de graça; repositório privado exige plano pago do GitHub pra publicar Pages). Raiz do repo = a pasta `SISTEMA FINANCEIRO` inteira (não só `financeiro/`), incluindo este `CLAUDE (1).md` e o atalho `.bat`.
+- **Identidade git local:** configurada só com `git config --local` (não mexe na config global da máquina) — `user.name = "Rafael Ferreira"`, `user.email = alexandreroliveira76@gmail.com`.
+- **Deploy automático:** workflow em `.github/workflows/deploy.yml` builda `financeiro/` (Node 22) e publica `financeiro/dist` no GitHub Pages a cada push na branch `main`. Site ao vivo: **https://rafahferr.github.io/sistema-financiero-2/**.
+- **Mudanças de código feitas só por causa do GitHub Pages:**
+  - `App.tsx`: `BrowserRouter` → `HashRouter` (Pages não suporta rewrite de rota de SPA sem isso; URLs viram `/#/dividas` em vez de `/dividas`)
+  - `vite.config.ts`: `base: '/sistema-financiero-2/'` adicionado
+- **Proteção da branch `main`:** ruleset criado em Settings → Rules → Rulesets, "Active", alvo = default branch, com "Restrict deletions" e "Block force pushes" — **sem** "Require a pull request before merging" (deixado de fora de propósito, pra não travar o push direto que a gente usa no dia a dia).
+- **GitHub Pages e LGPD:** confirmado (por leitura de código — busca por `fetch`/`axios`/`XMLHttpRequest`/`WebSocket`/URLs em todo `src/` não encontrou nenhuma chamada de rede) que o app não tem NENHUMA chamada de rede — é 100% offline, todos os dados ficam só no IndexedDB do navegador de quem usa. Repositório público expõe só código, nunca dados reais (nenhum backup JSON foi commitado). LGPD Art. 4º, I exclui tratamento de dados pessoais feito por pessoa física pra fins particulares/não econômicos — não se aplica aqui. Único jeito de dado real vazar pro repo seria o usuário exportar um backup JSON (Configurações → Backup) e commitar esse arquivo manualmente — isso nunca deve ser feito.
+
 ---
 
 ## Contexto do Projeto

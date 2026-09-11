@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, ChevronDown, ChevronUp, Trash2, PiggyBank } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Trash2, Pencil, PiggyBank } from 'lucide-react';
 import Header from '../components/Layout/Header';
 import { useMetas } from '../hooks/useMetas';
 import { formatarMoeda, formatarData, dataHoje } from '../utils/formatters';
@@ -9,10 +9,11 @@ import type { Meta, AporteMeta } from '../types';
 const EMOJIS = ['🎯','✈️','🏠','🚗','💻','📱','🎓','💍','🏖️','🏋️','🎸','📚'];
 const CORES  = ['#6366f1','#22c55e','#f97316','#ec4899','#8b5cf6','#3b82f6','#f59e0b','#14b8a6'];
 
-function CardMeta({ meta, aportes, onAporte, onArquivar }: {
+function CardMeta({ meta, aportes, onAporte, onEditar, onArquivar }: {
   meta: Meta;
   aportes: AporteMeta[];
   onAporte: (metaId: number, valor: number, local: string, data: string) => void;
+  onEditar: (meta: Meta) => void;
   onArquivar: (id: number) => void;
 }) {
   const [expandido, setExpandido] = useState(false);
@@ -42,9 +43,14 @@ function CardMeta({ meta, aportes, onAporte, onArquivar }: {
             <span className="text-2xl">{meta.emoji ?? '🎯'}</span>
             <h3 className="text-white font-semibold">{meta.nome}</h3>
           </div>
-          <button onClick={() => onArquivar(meta.id!)} className="text-gray-600 hover:text-red-400 transition-colors" title="Arquivar meta">
-            <Trash2 size={14} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={() => onEditar(meta)} className="text-gray-600 hover:text-white transition-colors" title="Editar meta">
+              <Pencil size={14} />
+            </button>
+            <button onClick={() => onArquivar(meta.id!)} className="text-gray-600 hover:text-red-400 transition-colors" title="Arquivar meta">
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
 
         <div className="mb-3">
@@ -139,22 +145,27 @@ function CardMeta({ meta, aportes, onAporte, onArquivar }: {
   );
 }
 
-function ModalNovaMeta({ onClose, onSalvar }: { onClose: () => void; onSalvar: (m: Omit<Meta, 'id'>) => void }) {
-  const [nome, setNome] = useState('');
-  const [valorTotal, setValorTotal] = useState('');
-  const [emoji, setEmoji] = useState('🎯');
-  const [cor, setCor] = useState('#6366f1');
+function ModalNovaMeta({ metaEditar, onClose, onSalvar }: {
+  metaEditar?: Meta;
+  onClose: () => void;
+  onSalvar: (m: Omit<Meta, 'id' | 'valorGuardado' | 'ativa'>) => void;
+}) {
+  const editando = !!metaEditar;
+  const [nome, setNome] = useState(metaEditar?.nome ?? '');
+  const [valorTotal, setValorTotal] = useState(metaEditar?.valorTotal?.toString() ?? '');
+  const [emoji, setEmoji] = useState(metaEditar?.emoji ?? '🎯');
+  const [cor, setCor] = useState(metaEditar?.cor ?? '#6366f1');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!nome.trim() || !parseFloat(valorTotal)) return;
-    onSalvar({ nome: nome.trim(), valorTotal: parseFloat(valorTotal), valorGuardado: 0, emoji, cor, ativa: true });
+    onSalvar({ nome: nome.trim(), valorTotal: parseFloat(valorTotal), emoji, cor });
   }
 
   return (
     <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4">
       <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm shadow-2xl p-6">
-        <h2 className="text-white font-semibold mb-4">Nova Meta</h2>
+        <h2 className="text-white font-semibold mb-4">{editando ? 'Editar Meta' : 'Nova Meta'}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text" value={nome} onChange={e => setNome(e.target.value)}
@@ -189,7 +200,9 @@ function ModalNovaMeta({ onClose, onSalvar }: { onClose: () => void; onSalvar: (
           </div>
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 bg-gray-800 text-gray-300 text-sm py-2.5 rounded-xl">Cancelar</button>
-            <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm py-2.5 rounded-xl">Criar Meta</button>
+            <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm py-2.5 rounded-xl">
+              {editando ? 'Salvar' : 'Criar Meta'}
+            </button>
           </div>
         </form>
       </div>
@@ -198,8 +211,9 @@ function ModalNovaMeta({ onClose, onSalvar }: { onClose: () => void; onSalvar: (
 }
 
 export default function Metas() {
-  const { metas, adicionarMeta, arquivarMeta, adicionarAporte, getAportesDaMeta } = useMetas();
+  const { metas, adicionarMeta, editarMeta, arquivarMeta, adicionarAporte, getAportesDaMeta } = useMetas();
   const [modalNova, setModalNova] = useState(false);
+  const [editando, setEditando] = useState<Meta | undefined>();
   const { toastMsg, toastTipo, mostrarToast, fecharToast } = useToast();
 
   return (
@@ -209,7 +223,7 @@ export default function Metas() {
       <div className="p-6">
         <div className="flex justify-end mb-5">
           <button
-            onClick={() => setModalNova(true)}
+            onClick={() => { setEditando(undefined); setModalNova(true); }}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
           >
             <Plus size={16} /> Nova Meta
@@ -220,7 +234,7 @@ export default function Metas() {
           <div className="text-center py-20">
             <p className="text-4xl mb-3">🎯</p>
             <p className="text-gray-400 text-lg font-medium">Nenhuma meta criada ainda</p>
-            <button onClick={() => setModalNova(true)} className="mt-4 text-indigo-400 hover:text-indigo-300 text-sm underline">
+            <button onClick={() => { setEditando(undefined); setModalNova(true); }} className="mt-4 text-indigo-400 hover:text-indigo-300 text-sm underline">
               Criar primeira meta
             </button>
           </div>
@@ -235,6 +249,7 @@ export default function Metas() {
                   await adicionarAporte({ metaId, valor, local, data });
                   mostrarToast('Aporte registrado! 💰');
                 }}
+                onEditar={(m) => { setEditando(m); setModalNova(true); }}
                 onArquivar={async (id) => {
                   if (confirm('Arquivar esta meta?')) {
                     await arquivarMeta(id);
@@ -249,11 +264,18 @@ export default function Metas() {
 
       {modalNova && (
         <ModalNovaMeta
-          onClose={() => setModalNova(false)}
+          metaEditar={editando}
+          onClose={() => { setModalNova(false); setEditando(undefined); }}
           onSalvar={async (dados) => {
-            await adicionarMeta(dados);
+            if (editando?.id) {
+              await editarMeta(editando.id, dados);
+              mostrarToast('Meta atualizada! ✏️');
+            } else {
+              await adicionarMeta({ ...dados, valorGuardado: 0, ativa: true });
+              mostrarToast('Meta criada! 🎯');
+            }
             setModalNova(false);
-            mostrarToast('Meta criada! 🎯');
+            setEditando(undefined);
           }}
         />
       )}
