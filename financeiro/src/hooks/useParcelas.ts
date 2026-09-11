@@ -133,6 +133,52 @@ export async function editarGrupoParcela(
   });
 }
 
+/**
+ * Recria as parcelas que estão faltando numa compra parcelada (buracos deixados pela regra
+ * antiga, que apagava a parcela atrasada ao virar dívida).
+ *
+ * `comoPagas` existe porque só o usuário sabe o que aconteceu com aquele dinheiro: se a dívida
+ * correspondente já foi quitada, as parcelas voltam marcadas como pagas; se ainda são devidas,
+ * voltam em aberto e o espelhamento automático cuida de cobrá-las como dívida de novo.
+ */
+export async function restaurarParcelasFaltantes(grupoId: number, comoPagas: boolean): Promise<number> {
+  const sobreviventes = await db.lancamentos
+    .filter(l => l.parcelado && (l.lancamentoPaiId === grupoId || l.id === grupoId))
+    .toArray();
+  if (sobreviventes.length === 0) return 0;
+
+  sobreviventes.sort((a, b) => (a.parcelaAtual ?? 1) - (b.parcelaAtual ?? 1));
+  const referencia = sobreviventes[0];
+  const totalParcelas = referencia.totalParcelas ?? sobreviventes.length;
+  const existentes = new Set(sobreviventes.map(l => l.parcelaAtual ?? 1));
+  const dataBase = dataDaPrimeiraParcela(sobreviventes);
+
+  let criadas = 0;
+  await db.transaction('rw', db.lancamentos, async () => {
+    for (let numero = 1; numero <= totalParcelas; numero++) {
+      if (existentes.has(numero)) continue;
+      await db.lancamentos.add({
+        tipo: referencia.tipo,
+        descricao: referencia.descricao,
+        categoria: referencia.categoria,
+        formaPagamento: referencia.formaPagamento,
+        valor: referencia.valor,
+        parcelado: true,
+        numeroParcelas: totalParcelas,
+        parcelaAtual: numero,
+        totalParcelas,
+        lancamentoPaiId: grupoId,
+        gastoFixo: referencia.gastoFixo,
+        pago: comoPagas,
+        ...datasDaParcela(dataBase, numero),
+      } as Lancamento);
+      criadas++;
+    }
+  });
+
+  return criadas;
+}
+
 export function useParcelas() {
   const lancamentosParcelados = useLiveQuery(() =>
     db.lancamentos.filter(l => l.parcelado).toArray()

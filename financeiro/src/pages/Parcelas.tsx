@@ -2,16 +2,18 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Pencil, Check, AlertTriangle, X } from 'lucide-react';
 import Header from '../components/Layout/Header';
-import { useParcelas, editarGrupoParcela, type GrupoParcela } from '../hooks/useParcelas';
-import { marcarLancamentoPago } from '../hooks/useDividas';
+import { useParcelas, editarGrupoParcela, restaurarParcelasFaltantes, type GrupoParcela } from '../hooks/useParcelas';
+import { marcarLancamentoPago, useDividas } from '../hooks/useDividas';
 import { useConfiguracoes } from '../hooks/useConfiguracoes';
 import { formatarMoeda, formatarData } from '../utils/formatters';
 import { Toast, useToast } from '../components/Toast';
 
-function CardParcela({ grupo, onEditar, onTogglePago }: {
+function CardParcela({ grupo, temDivida, onEditar, onTogglePago, onRestaurar }: {
   grupo: GrupoParcela;
+  temDivida: boolean;
   onEditar: (g: GrupoParcela) => void;
   onTogglePago: (id: number, pago: boolean) => void;
+  onRestaurar: (grupoId: number, quantidade: number) => void;
 }) {
   const [expandido, setExpandido] = useState(false);
 
@@ -60,12 +62,30 @@ function CardParcela({ grupo, onEditar, onTogglePago }: {
         </div>
 
         {faltamNoGrupo > 0 && (
-          <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2 mb-3">
-            <AlertTriangle size={13} className="text-yellow-400 shrink-0" />
-            <p className="text-yellow-400 text-xs">
-              {faltamNoGrupo === 1 ? '1 parcela virou' : `${faltamNoGrupo} parcelas viraram`} dívida por falta de pagamento.{' '}
-              <Link to="/dividas" className="underline">Ver Dívidas</Link>
-            </p>
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2 mb-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={13} className="text-yellow-400 shrink-0 mt-0.5" />
+              <p className="text-yellow-400 text-xs">
+                {temDivida ? (
+                  <>
+                    {faltamNoGrupo === 1 ? '1 parcela está sendo cobrada' : `${faltamNoGrupo} parcelas estão sendo cobradas`} como dívida.{' '}
+                    <Link to="/dividas" className="underline">Ver Dívidas</Link>
+                  </>
+                ) : (
+                  <>
+                    {faltamNoGrupo === 1 ? '1 parcela foi removida' : `${faltamNoGrupo} parcelas foram removidas`} do histórico e não estão em nenhuma dívida.
+                  </>
+                )}
+              </p>
+            </div>
+            {!temDivida && (
+              <button
+                onClick={() => onRestaurar(grupo.grupoId, faltamNoGrupo)}
+                className="mt-2 w-full bg-yellow-600/80 hover:bg-yellow-600 text-white text-xs font-medium py-1.5 rounded-lg transition-colors"
+              >
+                Restaurar {faltamNoGrupo === 1 ? 'parcela' : 'parcelas'}
+              </button>
+            )}
           </div>
         )}
 
@@ -234,6 +254,7 @@ function ModalEditarParcela({ grupo, onClose, onSalvar }: {
 
 export default function Parcelas() {
   const { grupos } = useParcelas();
+  const { dividas } = useDividas();
   const [filtro, setFiltro] = useState<'todas' | 'em_andamento' | 'concluidas'>('todas');
   const [editando, setEditando] = useState<GrupoParcela | undefined>();
   const { toastMsg, toastTipo, mostrarToast, fecharToast } = useToast();
@@ -278,8 +299,25 @@ export default function Parcelas() {
               <CardParcela
                 key={grupo.grupoId}
                 grupo={grupo}
+                temDivida={dividas.some(d => d.origemLancamentoGrupoId === grupo.grupoId)}
                 onEditar={setEditando}
                 onTogglePago={(id, pago) => marcarLancamentoPago(id, !pago)}
+                onRestaurar={async (grupoId, quantidade) => {
+                  const plural = quantidade === 1 ? 'essa parcela' : `essas ${quantidade} parcelas`;
+                  const jaPagas = confirm(
+                    `Restaurar ${plural}.\n\n` +
+                    `Clique OK se ${quantidade === 1 ? 'ela já foi paga' : 'elas já foram pagas'} ` +
+                    `(ex: você quitou a dívida delas antes de ela ser excluída).\n` +
+                    `Clique Cancelar se ${quantidade === 1 ? 'ainda está em aberto' : 'ainda estão em aberto'} — ` +
+                    `nesse caso elas voltam como não pagas e serão cobradas como dívida.`
+                  );
+                  const criadas = await restaurarParcelasFaltantes(grupoId, jaPagas);
+                  mostrarToast(
+                    criadas === 1
+                      ? `1 parcela restaurada${jaPagas ? ' como paga' : ' em aberto'}.`
+                      : `${criadas} parcelas restauradas${jaPagas ? ' como pagas' : ' em aberto'}.`
+                  );
+                }}
               />
             ))}
           </div>

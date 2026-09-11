@@ -31,7 +31,13 @@ export async function recalcularDivida(dividaId: number) {
         ? 'atrasada'
         : 'em_aberto';
 
-  await db.dividas.update(dividaId, { valorTotal, valorPago, status });
+  // O plano de parcelas da dívida espelho é quantas parcelas atrasadas ela cobre — não o total
+  // de parcelas da compra original, que incluiria parcelas em dia que nem estão nesta dívida.
+  const plano = atrasados.length > 0
+    ? { numeroParcelas: atrasados.length, valorParcela: valorTotal / atrasados.length }
+    : {};
+
+  await db.dividas.update(dividaId, { valorTotal, valorPago, status, ...plano });
 }
 
 /**
