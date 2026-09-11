@@ -1,6 +1,6 @@
 # Sistema Financeiro Pessoal — Instruções para o Claude Code
 
-## 📍 Status Atual (atualizado em 2026-09-10)
+## 📍 Status Atual (atualizado em 2026-09-11)
 
 **O sistema já está implementado e funcionando** — o conteúdo abaixo, a partir de "Contexto do Projeto", é o **brief original** que guiou a construção (mantido como referência histórica). Praticamente tudo nele foi construído. Esta seção existe para que uma sessão futura do Claude Code (ou você) recupere o contexto rapidamente sem reler o código inteiro.
 
@@ -14,8 +14,13 @@ npm run dev
 **O que existe além do brief original:**
 - **Módulo Dívidas** (`/dividas`) — não estava no plano original. Funciona como o espelho de Metas Financeiras, mas para abatimento de dívida em vez de acúmulo de meta. Ver seção "6.1 Dívidas" adicionada abaixo.
 - **Conversão automática de pendências em dívida** — toda despesa não paga de um mês encerrado (incluindo fixas e parcelas) vira uma dívida sozinha, ao abrir o app. Ver seção "6.1 Dívidas".
+- **Módulo Parcelas** (`/parcelas`) — agrupa as compras parceladas e permite editá-las como uma unidade só. Ver seção "6.2 Parcelas" abaixo.
+- **Edição de metas** — os cards em `/metas` ganharam botão de lápis pra corrigir nome, valor total, emoji e cor (o valor guardado continua vindo só dos aportes, pra não conflitar com o histórico).
+- **Ordenação por pago em Lançamentos** — o que já foi pago afunda para o fim da lista da semana e fica com opacidade reduzida; há também um chip "Falta pagar" no topo somando as despesas ainda em aberto.
 - Schema do Dexie está na versão 4 (o brief original só previa a versão 1) — ver `financeiro/src/db/database.ts` para o histórico real de migrações.
 - `Lancamento` ganhou os campos `dividaId`, `pagamentoDividaId`, `origemDivida` (não previstos no brief original) para sustentar a integração com Dívidas.
+
+**⚠️ Regra de data (bug já corrigido, não repetir):** nunca usar `new Date('yyyy-MM-dd')` direto — o JS lê como meia-noite **UTC** e, no horário de Brasília, cai um dia antes. Isso fazia toda parcela 2..N nascer um dia adiantada. Sempre usar `new Date(data + 'T00:00:00')` ou o `format()` do date-fns, que operam em horário local.
 
 **Para o histórico técnico completo e atualizado** (schema exato, bugs corrigidos, decisões tomadas, testes feitos), consulte a memória do Claude Code para este projeto — arquivo `project_sistema_financeiro.md` no sistema de memória — que é carregado automaticamente em toda nova conversa e é a fonte mais confiável e atualizada. Este arquivo `CLAUDE (1).md` é atualizado sob pedido, não automaticamente.
 
@@ -95,6 +100,7 @@ financeiro/
 │   │   ├── useLancamentos.ts
 │   │   ├── useMetas.ts
 │   │   ├── useDividas.ts                # NOVO — CRUD de dívidas + conversão automática de pendências
+│   │   ├── useParcelas.ts               # NOVO — agrupa compras parceladas + edição em cascata
 │   │   ├── useConfiguracoes.ts          # lê categorias/pagamentos do banco
 │   │   └── useGamificacao.ts
 │   ├── pages/
@@ -103,6 +109,7 @@ financeiro/
 │   │   ├── ResumoAnual.tsx
 │   │   ├── Metas.tsx
 │   │   ├── Dividas.tsx                  # NOVO
+│   │   ├── Parcelas.tsx                 # NOVO
 │   │   ├── Investimentos.tsx
 │   │   └── Configuracoes.tsx
 │   ├── types/
@@ -361,6 +368,7 @@ Cada meta é um card com:
 - "Faltam R$ X"
 - Botão "Registrar aporte" → abre mini-form: local + valor + data
 - Histórico de aportes ao expandir o card
+- Botão de editar (lápis) → corrige nome, valor total, emoji e cor. O valor guardado **não** é editável ali: ele é sempre a soma dos aportes, igual ao `valorPago` das dívidas.
 
 Layout em grid de cards (2 ou 3 por linha).
 
@@ -393,6 +401,29 @@ Espelha o padrão de Metas Financeiras, mas para o lado oposto: em vez de acumul
 
 **Conversão automática de pendências em dívida:**
 Ao abrir o app, toda despesa não paga de um mês já encerrado (incluindo gastos fixos e parcelas individuais) é convertida automaticamente em dívida com status `Atrasada`, e o lançamento original é **removido** de Fluxos (a dívida passa a ser o único registro daquele valor). Um banner de aviso mostra quantos itens foram convertidos e quanto, com atalho para `/dividas`. Parcelas da mesma compra parcelada convergem para **uma única** dívida (via `origemLancamentoGrupoId`), em vez de criar um card duplicado por parcela — e uma rotina de limpeza mescla automaticamente duplicatas que porventura já existiam de execuções anteriores a essa correção.
+
+---
+
+### 6.2 Parcelas (`Parcelas.tsx`) — módulo adicionado, não previsto no brief original
+
+Rota `/parcelas`, item próprio na sidebar (ícone `Layers`). Trata uma compra parcelada como **uma unidade só**, em vez de N lançamentos soltos espalhados pelos meses.
+
+**Cada compra é um card com:**
+- Descrição, categoria e forma de pagamento
+- Badge `X/N parcelas pagas` e barra de progresso (valor pago / valor total)
+- Quanto já foi pago e quanto ainda falta
+- Expandir mostra cada parcela individual (número, data, valor) e permite marcar como paga ali mesmo
+- Filtro no topo: Todas / Em andamento / Concluídas
+- Aviso quando faltam parcelas no grupo (viraram dívida pela conversão automática), com link para `/dividas`
+
+**Edição da compra inteira** (botão de lápis) — resolve o problema de ter que editar parcela por parcela:
+- **Data da 1ª parcela** — as demais são recalculadas automaticamente, uma por mês. O offset usa `parcelaAtual`, não a posição no array, pra não desalinhar caso alguma parcela do meio já tenha virado dívida.
+- **Nº de parcelas** — aumentar cria as parcelas que faltam no fim; diminuir exclui as que passam do novo total, sempre com confirmação avisando quantas serão excluídas e quantas delas já estavam pagas. Parcelas ausentes no meio **não** são recriadas ao aumentar (quem sumiu virou dívida e continua sendo cobrada lá).
+- **Descrição, categoria, forma de pagamento e valor da parcela** — aplicados a todas as parcelas de uma vez.
+
+**Resumo no Dashboard:** widget "Compras Parceladas" no `Home.tsx` (visão global, **não** filtrada pelo mês selecionado), com quantas compras estão em andamento, total já pago, total restante e barra de progresso por compra.
+
+**Onde fica a lógica:** `hooks/useParcelas.ts` — o hook `useParcelas()` agrupa lançamentos com `parcelado: true` por `lancamentoPaiId ?? id` (mesmo padrão de agrupamento usado em Dívidas), e a função `editarGrupoParcela(grupoId, dados)` faz toda a edição em cascata dentro de uma transação Dexie.
 
 ---
 
